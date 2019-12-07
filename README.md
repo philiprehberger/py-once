@@ -1,5 +1,9 @@
 # philiprehberger-once
 
+[![Tests](https://github.com/philiprehberger/py-once/actions/workflows/publish.yml/badge.svg)](https://github.com/philiprehberger/py-once/actions/workflows/publish.yml)
+[![PyPI version](https://img.shields.io/pypi/v/philiprehberger-once.svg)](https://pypi.org/project/philiprehberger-once/)
+[![License](https://img.shields.io/github/license/philiprehberger/py-once)](LICENSE)
+
 Ensure a function runs only once, regardless of how many times it's called.
 
 ## Install
