@@ -81,6 +81,14 @@ init()        # runs again
 | `.called` | `bool` for `once`, `dict[key, bool]` for `once_per_key`. Whether the function has been called. |
 | `.reset()` | Clear cached result so the function can run again. `once_per_key` accepts an optional `key` argument. |
 
+
+## Development
+
+```bash
+pip install -e .
+python -m pytest tests/ -v
+```
+
 ## License
 
 MIT
