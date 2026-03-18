@@ -6,7 +6,7 @@
 
 Ensure a function runs only once, regardless of how many times it's called.
 
-## Install
+## Installation
 
 ```bash
 pip install philiprehberger-once

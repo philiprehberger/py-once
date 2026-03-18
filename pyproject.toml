@@ -24,9 +24,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/philiprehberger/py-once"
+Homepage = "https://github.com/philiprehberger/py-once#readme"
 Repository = "https://github.com/philiprehberger/py-once"
 Issues = "https://github.com/philiprehberger/py-once/issues"
+Changelog = "https://github.com/philiprehberger/py-once/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/philiprehberger_once"]
