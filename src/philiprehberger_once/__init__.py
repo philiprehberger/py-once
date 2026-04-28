@@ -7,7 +7,7 @@ import functools
 import threading
 from typing import Any, Callable, TypeVar
 
-__all__ = ["once", "once_per_key"]
+__all__ = ["once", "once_per_key", "once_per_key_async"]
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -147,3 +147,107 @@ def once_per_key(fn: F) -> F:
         A wrapped version of *fn* that executes at most once per unique first argument.
     """
     return _OncePerKeyWrapper(fn)  # type: ignore[return-value]
+
+
+class _AsyncOncePerKeyWrapper:
+    """Wrapper that ensures an async function runs only once per unique key.
+
+    Concurrent awaiters of the same key share one in-flight execution; only
+    the first awaiter triggers the underlying coroutine. Subsequent calls for
+    the same key return the cached result without re-running the coroutine.
+    """
+
+    def __init__(
+        self,
+        fn: Callable[..., Any],
+        key_fn: Callable[..., Any] | None = None,
+    ) -> None:
+        self._fn = fn
+        self._key_fn = key_fn
+        self._results: dict[Any, Any] = {}
+        self._locks: dict[Any, asyncio.Lock] = {}
+        self._global_lock = asyncio.Lock()
+        functools.update_wrapper(self, fn)
+
+    @property
+    def called(self) -> dict[Any, bool]:
+        """Mapping of keys to whether the function has been called for that key."""
+        return {key: True for key in self._results}
+
+    def reset(self, key: Any = None) -> None:
+        """Reset cached results.
+
+        Args:
+            key: If provided, reset only the given key. Otherwise reset all keys.
+        """
+        if key is None:
+            self._results.clear()
+            self._locks.clear()
+        else:
+            self._results.pop(key, None)
+            self._locks.pop(key, None)
+
+    def _derive_key(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        if self._key_fn is not None:
+            return self._key_fn(*args, **kwargs)
+        if not args:
+            raise TypeError(
+                f"{self._fn.__name__}() requires at least one positional argument as key"
+            )
+        return args[0]
+
+    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        key = self._derive_key(args, kwargs)
+        if key in self._results:
+            return self._results[key]
+        async with self._global_lock:
+            lock = self._locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[key] = lock
+        async with lock:
+            if key not in self._results:
+                self._results[key] = await self._fn(*args, **kwargs)
+        return self._results[key]
+
+
+def once_per_key_async(
+    fn: Callable[..., Any] | None = None,
+    *,
+    key: Callable[..., Any] | None = None,
+) -> Any:
+    """Decorator that ensures an async function runs only once per unique key.
+
+    Usable in two forms:
+
+    - ``@once_per_key_async`` — uses the first positional argument as the key.
+    - ``@once_per_key_async(key=lambda *a, **kw: ...)`` — derives the key from
+      the supplied callable.
+
+    Concurrent awaiters of the same key share one in-flight task; only the
+    first triggers the underlying coroutine. The wrapper exposes
+    ``.reset(key=None)`` to clear cached results and ``.called`` to inspect
+    which keys have completed.
+
+    Args:
+        fn: The async function to wrap (when used as a bare decorator).
+        key: Optional callable that derives the cache key from the call's
+            positional and keyword arguments.
+
+    Returns:
+        An :class:`_AsyncOncePerKeyWrapper` wrapping *fn*.
+
+    Raises:
+        TypeError: If *fn* is not a coroutine function.
+    """
+
+    def _wrap(target: Callable[..., Any]) -> _AsyncOncePerKeyWrapper:
+        if not asyncio.iscoroutinefunction(target):
+            raise TypeError(
+                "once_per_key_async can only be applied to async (coroutine) functions"
+            )
+        return _AsyncOncePerKeyWrapper(target, key_fn=key)
+
+    if fn is None:
+        return _wrap
+    return _wrap(fn)

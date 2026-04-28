@@ -56,6 +56,34 @@ connect("db-1")  # returns cached "conn:db-1"
 connect("db-2")  # prints "Connecting to db-2...", returns "conn:db-2"
 ```
 
+### Once per key (async)
+
+```python
+import asyncio
+from philiprehberger_once import once_per_key_async
+
+@once_per_key_async
+async def fetch_user(user_id: str):
+    print(f"Fetching {user_id}...")
+    return {"id": user_id}
+
+async def main():
+    # Concurrent awaiters of the same key share one in-flight execution.
+    a, b, c = await asyncio.gather(
+        fetch_user("u1"),
+        fetch_user("u1"),
+        fetch_user("u2"),
+    )
+    # Only two prints: one for "u1" and one for "u2".
+
+asyncio.run(main())
+
+# Derive the cache key from a callable instead of the first arg:
+@once_per_key_async(key=lambda req, **kw: kw["uid"])
+async def load(req, *, uid: str):
+    return uid
+```
+
 ### Reset and inspect
 
 ```python
@@ -78,8 +106,9 @@ init()        # runs again
 |---------------------|-------------|
 | `once(fn)` | Decorator. Runs `fn` once, caches and returns the result on subsequent calls. Thread-safe. Supports async. |
 | `once_per_key(fn)` | Decorator. Runs `fn` once per unique first argument. Thread-safe. |
-| `.called` | `bool` for `once`, `dict[key, bool]` for `once_per_key`. Whether the function has been called. |
-| `.reset()` | Clear cached result so the function can run again. `once_per_key` accepts an optional `key` argument. |
+| `once_per_key_async(fn=None, *, key=None)` | Decorator for async functions. Runs the coroutine once per unique key (first positional arg, or derived via `key=...`). Concurrent awaiters of the same key share one in-flight execution. |
+| `.called` | `bool` for `once`, `dict[key, bool]` for `once_per_key` and `once_per_key_async`. Whether the function has been called. |
+| `.reset()` | Clear cached result so the function can run again. `once_per_key` and `once_per_key_async` accept an optional `key` argument. |
 
 ## Development
 
