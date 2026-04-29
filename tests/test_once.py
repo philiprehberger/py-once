@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from philiprehberger_once import once, once_per_key, once_per_key_async
+from philiprehberger_once import once, once_per_args, once_per_key, once_per_key_async
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +287,70 @@ def test_once_per_key_async_rejects_sync_function_bare() -> None:
         @once_per_key_async
         def not_async(host: str) -> str:
             return host
+
+
+def test_once_per_args_distinct_args_execute_independently() -> None:
+    counter = {"n": 0}
+
+    @once_per_args
+    def init(host: str, port: int) -> str:
+        counter["n"] += 1
+        return f"{host}:{port}"
+
+    assert init("a", 1) == "a:1"
+    assert init("a", 2) == "a:2"
+    assert init("b", 1) == "b:1"
+    assert counter["n"] == 3
+
+
+def test_once_per_args_repeated_args_run_once() -> None:
+    counter = {"n": 0}
+
+    @once_per_args
+    def init(host: str, port: int) -> str:
+        counter["n"] += 1
+        return f"{host}:{port}"
+
+    init("a", 1)
+    init("a", 1)
+    init("a", 1)
+    assert counter["n"] == 1
+
+
+def test_once_per_args_kwargs_keyed() -> None:
+    counter = {"n": 0}
+
+    @once_per_args
+    def init(*, host: str, port: int) -> str:
+        counter["n"] += 1
+        return f"{host}:{port}"
+
+    init(host="a", port=1)
+    init(host="a", port=1)
+    init(host="a", port=2)
+    assert counter["n"] == 2
+
+
+def test_once_per_args_reset_specific_and_all() -> None:
+    counter = {"n": 0}
+
+    @once_per_args
+    def init(x: int) -> int:
+        counter["n"] += 1
+        return counter["n"]
+
+    init(1)
+    init(2)
+    assert counter["n"] == 2
+
+    init.reset(1)
+    init(1)
+    assert counter["n"] == 3
+
+    init.reset()
+    init(1)
+    init(2)
+    assert counter["n"] == 5
 
 
 def test_once_per_key_async_rejects_sync_function_with_key() -> None:

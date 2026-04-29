@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "philiprehberger-once"
-version = "0.2.0"
-description = "Ensure a function runs only once, regardless of how many times it's called"
+version = "0.3.0"
+description = "Ensure a function runs only once, regardless of how many times it's called."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"

@@ -84,6 +84,23 @@ async def load(req, *, uid: str):
     return uid
 ```
 
+### Once per args
+
+Use the entire call signature (positional + keyword) as the cache key — handy when the value depends on more than just the first argument.
+
+```python
+from philiprehberger_once import once_per_args
+
+@once_per_args
+def init(host: str, port: int):
+    print(f"connecting to {host}:{port}")
+    return f"{host}:{port}"
+
+init("a", 1)   # prints, returns "a:1"
+init("a", 1)   # cached
+init("a", 2)   # prints, returns "a:2"
+```
+
 ### Reset and inspect
 
 ```python
@@ -106,6 +123,7 @@ init()        # runs again
 |---------------------|-------------|
 | `once(fn)` | Decorator. Runs `fn` once, caches and returns the result on subsequent calls. Thread-safe. Supports async. |
 | `once_per_key(fn)` | Decorator. Runs `fn` once per unique first argument. Thread-safe. |
+| `once_per_args(fn)` | Decorator. Runs `fn` once per unique combination of positional and keyword arguments. Thread-safe. All arguments must be hashable. |
 | `once_per_key_async(fn=None, *, key=None)` | Decorator for async functions. Runs the coroutine once per unique key (first positional arg, or derived via `key=...`). Concurrent awaiters of the same key share one in-flight execution. |
 | `.called` | `bool` for `once`, `dict[key, bool]` for `once_per_key` and `once_per_key_async`. Whether the function has been called. |
 | `.reset()` | Clear cached result so the function can run again. `once_per_key` and `once_per_key_async` accept an optional `key` argument. |

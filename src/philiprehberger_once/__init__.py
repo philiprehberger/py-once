@@ -7,7 +7,7 @@ import functools
 import threading
 from typing import Any, Callable, TypeVar
 
-__all__ = ["once", "once_per_key", "once_per_key_async"]
+__all__ = ["once", "once_per_args", "once_per_key", "once_per_key_async"]
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -147,6 +147,73 @@ def once_per_key(fn: F) -> F:
         A wrapped version of *fn* that executes at most once per unique first argument.
     """
     return _OncePerKeyWrapper(fn)  # type: ignore[return-value]
+
+
+class _OncePerArgsWrapper:
+    """Wrapper that ensures a function runs only once per unique combination of args + kwargs.
+
+    All positional and keyword arguments must be hashable.  The cache key is a
+    tuple ``(args, frozenset(kwargs.items()))``.
+    """
+
+    def __init__(self, fn: Callable[..., Any]) -> None:
+        self._fn = fn
+        self._lock = threading.Lock()
+        self._results: dict[Any, Any] = {}
+        functools.update_wrapper(self, fn)
+
+    @staticmethod
+    def _make_key(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        return (args, frozenset(kwargs.items()))
+
+    @property
+    def called(self) -> dict[Any, bool]:
+        """Mapping of cache keys to whether the function has been called for them."""
+        with self._lock:
+            return {key: True for key in self._results}
+
+    def reset(self, *args: Any, **kwargs: Any) -> None:
+        """Reset cached results.
+
+        Called with no arguments, clears every cached entry.  Called with
+        arguments, clears only the entry whose key matches those arguments.
+        """
+        with self._lock:
+            if not args and not kwargs:
+                self._results.clear()
+            else:
+                self._results.pop(self._make_key(args, kwargs), None)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        key = self._make_key(args, kwargs)
+        if key in self._results:
+            return self._results[key]
+        with self._lock:
+            if key not in self._results:
+                self._results[key] = self._fn(*args, **kwargs)
+        return self._results[key]
+
+
+def once_per_args(fn: F) -> F:
+    """Decorator that runs *fn* once per unique combination of arguments.
+
+    Unlike :func:`once_per_key` (which keys on the first positional argument),
+    this keys on the **entire** call signature: every positional and keyword
+    argument participates in the cache key.  All arguments must be hashable.
+
+    Thread-safe.  The wrapper exposes:
+
+    - ``.reset()`` to clear all cached results.
+    - ``.reset(*args, **kwargs)`` to clear a specific entry.
+    - ``.called`` returning a dict keyed by ``(args, frozenset(kwargs))``.
+
+    Args:
+        fn: The function to wrap.
+
+    Returns:
+        A wrapped version of *fn* that executes at most once per unique args.
+    """
+    return _OncePerArgsWrapper(fn)  # type: ignore[return-value]
 
 
 class _AsyncOncePerKeyWrapper:

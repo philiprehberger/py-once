@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 (2026-04-28)
+
+- Add `once_per_args` decorator — keys on the full call signature (all positional + keyword args), unlike `once_per_key` which only keys on the first positional arg
+- Sync `pyproject.toml` description to end with a period (matches README one-liner)
+
 ## 0.2.0 (2026-04-27)
 
 - Add `once_per_key_async` decorator for memoizing async coroutines per-key with shared in-flight execution
