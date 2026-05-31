@@ -6,7 +6,14 @@ import asyncio
 
 import pytest
 
-from philiprehberger_once import once, once_per_args, once_per_key, once_per_key_async
+from philiprehberger_once import (
+    forget,
+    once,
+    once_per_args,
+    once_per_key,
+    once_per_key_async,
+    until_success,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -359,3 +366,134 @@ def test_once_per_key_async_rejects_sync_function_with_key() -> None:
         @once_per_key_async(key=lambda x: x)
         def not_async(x: int) -> int:
             return x
+
+
+# ---------------------------------------------------------------------------
+# until_success
+# ---------------------------------------------------------------------------
+
+
+def test_until_success_does_not_cache_exceptions() -> None:
+    counter = {"n": 0}
+
+    @until_success
+    def always_fails() -> int:
+        counter["n"] += 1
+        raise RuntimeError("nope")
+
+    with pytest.raises(RuntimeError):
+        always_fails()
+    with pytest.raises(RuntimeError):
+        always_fails()
+    assert counter["n"] == 2
+    assert always_fails.succeeded is False
+
+
+def test_until_success_caches_after_first_successful_return() -> None:
+    counter = 0
+
+    @until_success
+    def flaky() -> str:
+        nonlocal counter
+        counter += 1
+        if counter == 1:
+            raise RuntimeError("transient")
+        return "ok"
+
+    with pytest.raises(RuntimeError):
+        flaky()
+    assert flaky.succeeded is False
+
+    assert flaky() == "ok"
+    assert flaky.succeeded is True
+
+    assert flaky() == "ok"
+    assert counter == 2  # not re-invoked after success
+
+
+def test_until_success_reset_clears_cached_success() -> None:
+    counter = {"n": 0}
+
+    @until_success
+    def init() -> int:
+        counter["n"] += 1
+        return counter["n"]
+
+    assert init() == 1
+    assert init() == 1
+    init.reset()
+    assert init.succeeded is False
+    assert init() == 2
+
+
+# ---------------------------------------------------------------------------
+# forget
+# ---------------------------------------------------------------------------
+
+
+def test_forget_returns_false_for_plain_function() -> None:
+    def plain() -> int:
+        return 1
+
+    assert forget(plain) is False
+
+
+def test_forget_works_for_once() -> None:
+    counter = {"n": 0}
+
+    @once
+    def init() -> int:
+        counter["n"] += 1
+        return counter["n"]
+
+    init()
+    assert init.called is True
+    assert forget(init) is True
+    assert init.called is False
+    assert init() == 2
+
+
+def test_forget_works_for_once_per_key() -> None:
+    counter = {"n": 0}
+
+    @once_per_key
+    def connect(host: str) -> int:
+        counter["n"] += 1
+        return counter["n"]
+
+    connect("a")
+    connect("b")
+    assert forget(connect) is True
+    assert connect.called == {}
+    connect("a")
+    assert counter["n"] == 3
+
+
+def test_forget_works_for_once_per_args() -> None:
+    counter = {"n": 0}
+
+    @once_per_args
+    def init(x: int) -> int:
+        counter["n"] += 1
+        return counter["n"]
+
+    init(1)
+    init(2)
+    assert forget(init) is True
+    init(1)
+    assert counter["n"] == 3
+
+
+def test_forget_works_for_until_success() -> None:
+    counter = {"n": 0}
+
+    @until_success
+    def init() -> int:
+        counter["n"] += 1
+        return counter["n"]
+
+    init()
+    assert init.succeeded is True
+    assert forget(init) is True
+    assert init.succeeded is False
+    assert init() == 2

@@ -101,6 +101,54 @@ init("a", 1)   # cached
 init("a", 2)   # prints, returns "a:2"
 ```
 
+### Cache only on success
+
+Use `@until_success` when you want to retry on failure but cache the first successful result. Exceptions propagate uncached.
+
+```python
+from philiprehberger_once import until_success
+
+attempts = 0
+
+@until_success
+def load_token():
+    global attempts
+    attempts += 1
+    if attempts < 3:
+        raise RuntimeError("temporary failure")
+    return "abc-123"
+
+# First two calls raise; third succeeds and is cached forever.
+# load_token()  # raises
+# load_token()  # raises
+load_token()    # returns "abc-123"
+load_token()    # returns "abc-123" (cached, not re-invoked)
+load_token.succeeded   # True
+```
+
+### Forgetting a cached function
+
+`forget(fn)` resets any wrapper in this package from a single entry point — handy when you don't know (or don't care) which decorator was used.
+
+```python
+from philiprehberger_once import forget, once, once_per_key
+
+@once
+def init():
+    return 42
+
+@once_per_key
+def connect(host):
+    return f"conn:{host}"
+
+init()
+connect("db-1")
+
+forget(init)      # True — clears @once cache
+forget(connect)   # True — clears all @once_per_key entries
+forget(lambda: 1) # False — plain function has no reset()
+```
+
 ### Reset and inspect
 
 ```python
@@ -125,6 +173,8 @@ init()        # runs again
 | `once_per_key(fn)` | Decorator. Runs `fn` once per unique first argument. Thread-safe. |
 | `once_per_args(fn)` | Decorator. Runs `fn` once per unique combination of positional and keyword arguments. Thread-safe. All arguments must be hashable. |
 | `once_per_key_async(fn=None, *, key=None)` | Decorator for async functions. Runs the coroutine once per unique key (first positional arg, or derived via `key=...`). Concurrent awaiters of the same key share one in-flight execution. |
+| `until_success(fn)` | Decorator. Caches the result only after `fn` returns without raising. Exceptions propagate uncached, so the next call retries. Sync only. Exposes `.succeeded` and `.reset()`. |
+| `forget(fn)` | Reset any wrapper in this package (`@once`, `@once_per_key`, `@once_per_args`, `@once_per_key_async`, `@until_success`). Returns `True` on success, `False` if `fn` has no `reset()` method. |
 | `.called` | `bool` for `once`, `dict[key, bool]` for `once_per_key` and `once_per_key_async`. Whether the function has been called. |
 | `.reset()` | Clear cached result so the function can run again. `once_per_key` and `once_per_key_async` accept an optional `key` argument. |
 

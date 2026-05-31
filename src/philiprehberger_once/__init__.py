@@ -7,7 +7,14 @@ import functools
 import threading
 from typing import Any, Callable, TypeVar
 
-__all__ = ["once", "once_per_args", "once_per_key", "once_per_key_async"]
+__all__ = [
+    "forget",
+    "once",
+    "once_per_args",
+    "once_per_key",
+    "once_per_key_async",
+    "until_success",
+]
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -318,3 +325,80 @@ def once_per_key_async(
     if fn is None:
         return _wrap
     return _wrap(fn)
+
+
+class _UntilSuccessWrapper:
+    """Wrapper that caches the result of *fn* only after a successful return.
+
+    Exceptions propagate uncached: if *fn* raises, the next call re-invokes
+    it. Once *fn* returns without raising, the result is cached and returned
+    on every subsequent call.
+    """
+
+    def __init__(self, fn: Callable[..., Any]) -> None:
+        self._fn = fn
+        self._lock = threading.Lock()
+        self._succeeded = False
+        self._result: Any = None
+        functools.update_wrapper(self, fn)
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether the wrapped function has returned successfully at least once."""
+        return self._succeeded
+
+    def reset(self) -> None:
+        """Reset state so the function will be re-invoked on next call."""
+        with self._lock:
+            self._succeeded = False
+            self._result = None
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        if self._succeeded:
+            return self._result
+        with self._lock:
+            if self._succeeded:
+                return self._result
+            result = self._fn(*args, **kwargs)  # raises propagate
+            self._result = result
+            self._succeeded = True
+        return result
+
+
+def until_success(fn: F) -> F:
+    """Decorator: cache the result of *fn* only when it returns without raising.
+
+    Like :func:`once`, but exceptions are NOT cached — if *fn* raises, the
+    next call re-invokes *fn*. Once *fn* returns successfully, the result is
+    cached and subsequent calls return the cached value.
+
+    Works for sync functions only. Async equivalent can be added later if
+    needed.
+
+    Args:
+        fn: The function to wrap.
+
+    Returns:
+        A wrapped version of *fn* that caches only successful results.
+    """
+    return _UntilSuccessWrapper(fn)  # type: ignore[return-value]
+
+
+def forget(fn: Any) -> bool:
+    """Reset any once-decorated function. Returns ``True`` on success.
+
+    Works for all wrappers in this package: :func:`once`,
+    :func:`once_per_key`, :func:`once_per_args`, :func:`once_per_key_async`,
+    and :func:`until_success`. Returns ``False`` if *fn* doesn't have a
+    callable ``reset()`` method.
+
+    Args:
+        fn: A wrapped function whose cached state should be cleared.
+
+    Returns:
+        ``True`` if *fn* was reset, ``False`` otherwise.
+    """
+    if hasattr(fn, "reset") and callable(fn.reset):
+        fn.reset()
+        return True
+    return False

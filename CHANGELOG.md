@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 (2026-05-30)
+
+- Add `@until_success` decorator that caches only after a successful return (exceptions propagate uncached)
+- Add `forget(fn)` to reset any once-wrapped function from a single entry point
+
 ## 0.3.0 (2026-04-28)
 
 - Add `once_per_args` decorator — keys on the full call signature (all positional + keyword args), unlike `once_per_key` which only keys on the first positional arg
